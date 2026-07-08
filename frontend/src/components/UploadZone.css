@@ -1,0 +1,163 @@
+.upload-screen-grid {
+  background-image:
+    linear-gradient(rgba(30, 30, 46, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 30, 46, 0.3) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.upload-hero {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.hero-title {
+  font-size: 42px;
+  color: var(--accent);
+  letter-spacing: 0.3em;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.hero-tagline {
+  color: var(--text-secondary);
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.hero-sub {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.upload-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 60px);
+  padding: 48px 24px;
+}
+
+.upload-zone {
+  width: 100%;
+  max-width: 640px;
+  min-height: 280px;
+  border: 2px dashed var(--accent-dim);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 48px;
+  background: var(--bg-panel);
+  position: relative;
+}
+
+.upload-zone.march-border {
+  animation: border-pulse 2.5s ease-in-out infinite;
+  outline: 1px dashed transparent;
+}
+
+@keyframes border-pulse {
+  0%, 100% {
+    border-color: var(--accent-dim);
+    box-shadow: 0 0 0 0 rgba(240, 180, 41, 0);
+  }
+  50% {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(240, 180, 41, 0.15);
+  }
+}
+
+.upload-data-icon {
+  margin-bottom: 8px;
+}
+
+.upload-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.upload-title {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+.upload-sub {
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-align: center;
+  max-width: 420px;
+}
+
+.file-btn {
+  margin-top: 16px;
+  padding: 10px 20px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.file-btn:hover {
+  border-color: var(--accent);
+}
+
+.cursor-underscore {
+  animation: blink 1s step-end infinite;
+}
+
+.feature-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 28px;
+  max-width: 900px;
+}
+
+.feature-pill {
+  padding: 8px 14px;
+  border: 1px solid var(--accent-dim);
+  color: var(--accent-dim);
+  font-size: 11px;
+  border-radius: 4px;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.feature-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(240, 180, 41, 0.08);
+}
+
+.pill-icon {
+  margin-right: 4px;
+}
+
+.terminal-log {
+  margin-top: 32px;
+  width: 100%;
+  max-width: 640px;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  min-height: 120px;
+}
+
+.log-line {
+  color: var(--positive);
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.log-prompt {
+  color: var(--accent);
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}

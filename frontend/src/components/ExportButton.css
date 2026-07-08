@@ -1,0 +1,48 @@
+.export-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.export-btn {
+  width: 100%;
+  padding: 20px;
+  font-size: 18px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.export-btn.loading {
+  opacity: 0.8;
+}
+
+.export-btn.done {
+  background: var(--positive);
+  border-color: var(--positive);
+  color: #0a0a0f;
+}
+
+.export-log {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--positive);
+  font-size: 12px;
+}
+
+.export-log div {
+  margin: 4px 0;
+}
+
+.export-error {
+  color: var(--negative);
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.export-success {
+  color: var(--positive);
+  margin-top: 12px;
+  font-size: 13px;
+}
