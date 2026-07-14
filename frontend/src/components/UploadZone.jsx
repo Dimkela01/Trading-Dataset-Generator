@@ -55,6 +55,10 @@ export default function UploadZone({ onUpload, loading }) {
         <h1 className="hero-title mono">ALPHAFORGE</h1>
         <p className="hero-tagline">From raw market data to model-ready datasets.</p>
         <p className="hero-sub">No boilerplate. No temporal leakage. No guesswork.</p>
+        <p className="hero-intro">
+          Upload your raw trading dataset and let the guided pipeline walk you through transforming
+          it, step by step, into a clean, machine-learning-ready training set.
+        </p>
       </div>
 
       <div

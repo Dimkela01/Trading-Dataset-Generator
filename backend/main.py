@@ -181,6 +181,7 @@ async def preview(state: PipelineState):
         "columns": list(result.columns.astype(str)),
         "row_count": len(result),
         "preview": df_to_preview_records(result),
+        "features_added": meta.get("features_added", []),
     }
 
 

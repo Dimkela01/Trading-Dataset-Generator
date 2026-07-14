@@ -1,26 +1,43 @@
 .data-summary {
-  padding: 24px;
-  max-width: 1400px;
+  padding: 24px 32px;
+  width: 100%;
   margin: 0 auto;
 }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap: 24px;
+.summary-intro {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 760px;
+  margin: 0 0 20px;
+}
+
+.preview-section {
+  margin-bottom: 28px;
+}
+
+.preview-heading {
+  color: var(--accent);
+  margin-bottom: 12px;
 }
 
 .chips {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .column-list h3 {
   font-size: 14px;
   color: var(--text-secondary);
   margin-bottom: 12px;
+}
+
+.column-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  column-gap: 32px;
 }
 
 .col-row {
