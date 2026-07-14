@@ -9,6 +9,17 @@ export default function Step4_TrainTestSplit({ uploadData, pipelineState, setPip
   const trainRows = Math.floor(total * trainRatio)
   const testRows = total - trainRows
 
+  // Mirror the backend embargo: labels look forward, so boundary rows are purged
+  // to stop training labels peeking into the test period.
+  const label = pipelineState.label
+  const embargo = !label
+    ? 0
+    : label.method === 'forward_return'
+      ? label.params?.periods ?? 5
+      : label.method === 'triple_barrier'
+        ? label.params?.max_periods ?? 10
+        : 0
+
   const setMethod = (m) => {
     const defaults = m === 'walk_forward'
       ? { n_splits: 5, gap: 0 }
@@ -27,8 +38,16 @@ export default function Step4_TrainTestSplit({ uploadData, pipelineState, setPip
     <div className="step-panel">
       <h2>Train / Test Split</h2>
 
-      <div className="warning-banner">
-        ⚠ AlphaForge never shuffles time series data. Temporal ordering is always preserved.
+      <div className="explain">
+        <p>
+          <strong>What is this step?</strong> You&apos;re choosing which rows the model{' '}
+          <em>learns from</em> (train) and which are held back to check whether it actually works on
+          data it has never seen (test).
+        </p>
+        <p>
+          Because this is time-series data, AlphaForge <strong>never shuffles</strong> — the test
+          set is always your most recent rows, exactly like predicting the future from the past.
+        </p>
       </div>
 
       <div className="method-cards">
@@ -37,8 +56,8 @@ export default function Step4_TrainTestSplit({ uploadData, pipelineState, setPip
           className={`method-card ${method === 'temporal' ? 'selected' : ''}`}
           onClick={() => setMethod('temporal')}
         >
-          <strong>TEMPORAL SPLIT</strong>
-          <p>Single chronological train/test split</p>
+          <strong>TEMPORAL SPLIT<span className="rec-badge">recommended</span></strong>
+          <p>One cut point: earlier rows train, later rows test</p>
         </button>
         <button
           type="button"
@@ -46,8 +65,25 @@ export default function Step4_TrainTestSplit({ uploadData, pipelineState, setPip
           onClick={() => setMethod('walk_forward')}
         >
           <strong>WALK-FORWARD</strong>
-          <p>Expanding window cross-validation (export uses last fold)</p>
+          <p>Repeat over several periods to check robustness (advanced)</p>
         </button>
+      </div>
+
+      <div className="choice-help">
+        {method === 'temporal' ? (
+          <>
+            <strong>Temporal split</strong> picks a single point in time. Everything before it
+            trains the model; everything after tests it. Simple and the right choice for most
+            datasets — <strong>80% train</strong> is a solid starting point.
+          </>
+        ) : (
+          <>
+            <strong>Walk-forward</strong> repeats the train/test process over several expanding
+            windows, so you can confirm the model holds up across different market periods rather
+            than getting lucky on one. Use it when you specifically need cross-validation. The export
+            file contains the last (largest) fold.
+          </>
+        )}
       </div>
 
       {method === 'temporal' && (
@@ -74,6 +110,15 @@ export default function Step4_TrainTestSplit({ uploadData, pipelineState, setPip
               <span>Test: {testRows.toLocaleString()} rows</span>
             </div>
           </div>
+
+          {embargo > 0 && (
+            <div className="embargo-note">
+              <strong>🛡 Leakage guard:</strong> your labels look {embargo} bars into the future, so
+              AlphaForge automatically removes the {embargo} rows at the train/test boundary. This
+              stops the model from &ldquo;seeing&rdquo; test-period prices during training — a
+              common, hard-to-spot mistake that makes results look better than they really are.
+            </div>
+          )}
         </div>
       )}
 

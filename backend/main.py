@@ -17,6 +17,7 @@ from processors.exporter import (
     compute_label_distribution,
     generate_report_html,
 )
+from processors.labeler import apply_label
 
 app = FastAPI(title="AlphaForge API")
 
@@ -177,12 +178,39 @@ async def preview(state: PipelineState):
     if err:
         raise HTTPException(status_code=400, detail=err)
 
-    return {
+    response: dict[str, Any] = {
         "columns": list(result.columns.astype(str)),
         "row_count": len(result),
         "preview": df_to_preview_records(result),
         "features_added": meta.get("features_added", []),
+        "label_distribution": None,
+        "label_is_classification": None,
+        "label_row_count": None,
+        "label_error": None,
     }
+
+    # Live label preview: compute the label on the feature-engineered frame so
+    # the wizard can show its class balance and validate a custom expression
+    # inline. A label failure (e.g. a bad custom expression) is surfaced as a
+    # warning without discarding the column/feature preview above.
+    label_cfg = state_dict.get("label")
+    if label_cfg and label_cfg.get("method"):
+        labeled, label_err = apply_label(
+            result, label_cfg, _price_context_from_session(session)
+        )
+        if label_err:
+            response["label_error"] = label_err
+        elif labeled is not None:
+            dist, is_classification = compute_label_distribution(labeled, label_cfg)
+            response["label_distribution"] = dist
+            response["label_is_classification"] = is_classification
+            label_cols = [c for c in labeled.columns if c.startswith("label")]
+            if label_cols:
+                response["label_row_count"] = int(
+                    labeled[label_cols].notna().any(axis=1).sum()
+                )
+
+    return response
 
 
 @app.post("/export")

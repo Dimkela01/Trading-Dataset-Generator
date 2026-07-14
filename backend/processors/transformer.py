@@ -47,8 +47,19 @@ def apply_transforms(
     df: pd.DataFrame,
     column_transforms: list[dict],
     timestamp_col: str | None,
+    protected_cols: set[str] | None = None,
 ) -> pd.DataFrame:
+    """Apply per-column transforms.
+
+    `protected_cols` are the raw price/volume/bid/ask columns that downstream
+    stages (indicators, labels) resolve *by name* (e.g. ``close``). When a
+    protected column is transformed, we keep the original alongside the derived
+    column instead of dropping it — otherwise transforming ``close`` would make
+    RSI/MACD/labels unable to find their price series. An explicit ``drop`` on a
+    protected column is still honoured (the user asked for it).
+    """
     result = df.copy()
+    protected_cols = protected_cols or set()
     transform_map = {t["column"]: t for t in column_transforms}
 
     cols_to_process = [
@@ -81,7 +92,9 @@ def apply_transforms(
                 suffix = f"{transform}_{params.get('window', 20)}"
             new_name = f"{col}_{suffix}"
             result[new_name] = new_series
-            if transform != "none":
+            # Drop the original only if it isn't a protected price column that
+            # downstream indicators/labels still need to resolve by name.
+            if transform != "none" and col not in protected_cols:
                 result = result.drop(columns=[col])
 
     return result

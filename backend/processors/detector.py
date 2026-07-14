@@ -83,32 +83,37 @@ def detect_symbol_column(
     df: pd.DataFrame,
     timestamp_col: str | None,
 ) -> tuple[str | None, list[str], dict[str, int]]:
+    """Find a column that stacks multiple instruments into one file.
+
+    Gated on the column *name* matching a symbol keyword — a strong, low
+    false-positive signal — so we can afford to relax every other threshold:
+
+    - numeric symbol codes are accepted (an integer ``symbol_id`` is common);
+    - up to 1000 distinct instruments (stacked S&P 500 / crypto universes);
+    - no minimum row count, so small multi-asset files are still caught.
+
+    The only structural guard is that the column must partition rows into
+    *repeated* blocks (``n_unique <= n/2``): each symbol spans many bars. That
+    rejects near-unique id or continuous price columns that happen to be named
+    like a symbol.
+    """
     n = len(df)
-    if n == 0:
+    if n < 2:
         return None, [], {}
 
     for col in df.columns:
         if timestamp_col and col == timestamp_col:
             continue
-        series = df[col]
-        if pd.api.types.is_numeric_dtype(series):
-            continue
-        if not (
-            pd.api.types.is_object_dtype(series)
-            or pd.api.types.is_string_dtype(series)
-            or pd.api.types.is_categorical_dtype(series)
-        ):
-            continue
-
-        n_unique = series.nunique(dropna=True)
-        if n_unique < 2 or n_unique > 50:
-            continue
-        if n_unique >= n * 0.01:
-            continue
 
         norm = _normalize_name(str(col))
-        name_match = any(kw in norm for kw in SYMBOL_KEYWORDS)
-        if not name_match:
+        if not any(kw in norm for kw in SYMBOL_KEYWORDS):
+            continue
+
+        series = df[col]
+        n_unique = series.nunique(dropna=True)
+        if n_unique < 2 or n_unique > 1000:
+            continue
+        if n_unique > n / 2:
             continue
 
         counts = series.value_counts().to_dict()

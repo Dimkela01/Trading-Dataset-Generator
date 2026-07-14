@@ -32,7 +32,7 @@ export default function WizardShell({
       case 2:
         return <Step2_FeatureEngineering {...props} preview={preview} />
       case 3:
-        return <Step3_LabelGeneration {...props} />
+        return <Step3_LabelGeneration {...props} preview={preview} />
       case 4:
         return <Step4_TrainTestSplit {...props} />
       default:

@@ -358,3 +358,249 @@
 .diagram-caption {
   margin-bottom: 12px;
 }
+
+/* ---- Plain-language guidance for non-expert users ---- */
+.explain {
+  font-size: 13.5px;
+  line-height: 1.62;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-dim);
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.explain p {
+  margin: 0 0 8px;
+}
+
+.explain p:last-child {
+  margin-bottom: 0;
+}
+
+.explain strong {
+  color: var(--text-primary);
+}
+
+.explain code {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  font-size: 12.5px;
+  padding: 0 2px;
+}
+
+.explain .up {
+  color: var(--positive);
+}
+
+.explain .down {
+  color: var(--negative);
+}
+
+.rec-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--positive);
+  border: 1px solid var(--positive);
+  border-radius: 2px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+  opacity: 0.9;
+}
+
+.choice-help {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: -6px 0 18px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.choice-help strong {
+  color: var(--text-primary);
+}
+
+.choice-help code {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.embargo-note {
+  margin-top: 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--positive);
+  background: rgba(74, 222, 128, 0.05);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 500px;
+}
+
+.embargo-note strong {
+  color: var(--positive);
+}
+
+/* transform glossary (Step 1) */
+.transform-legend {
+  margin: 4px 0 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.transform-legend summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.transform-legend summary strong {
+  color: var(--accent);
+}
+
+.transform-legend dl {
+  margin: 0;
+  padding: 4px 16px 14px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 7px 16px;
+  font-size: 12.5px;
+}
+
+.transform-legend dt {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.transform-legend dd {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Live label distribution (Step 3) */
+.dist-panel {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.dist-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.dist-head strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.dist-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dist-row {
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dist-key {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.dist-track {
+  height: 10px;
+  background: var(--bg-elevated);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.dist-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.25s ease;
+  min-width: 2px;
+}
+
+.dist-count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.dist-group {
+  margin-bottom: 0.85rem;
+}
+
+.dist-group:last-child {
+  margin-bottom: 0;
+}
+
+.dist-group-name {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+}
+
+.dist-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.75rem;
+}
+
+.dist-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-elevated);
+  border-radius: 5px;
+}
+
+.dist-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.dist-stat-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.dist-error {
+  border-color: var(--negative);
+}
+
+.dist-error strong {
+  color: var(--negative);
+  font-size: 0.9rem;
+}
+
+.dist-error-msg {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  word-break: break-word;
+}

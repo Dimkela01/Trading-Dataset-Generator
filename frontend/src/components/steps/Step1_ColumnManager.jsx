@@ -96,7 +96,40 @@ export default function Step1_ColumnManager({ uploadData, pipelineState, setPipe
   return (
     <div className="step-panel">
       <h2>Column Manager</h2>
-      <p className="step-desc">Transform or drop columns. Timestamp column is preserved automatically.</p>
+      <p className="step-desc">Clean up your columns before building features. Your timestamp column is kept automatically.</p>
+
+      <div className="explain">
+        <p>
+          <strong>Why transform a column?</strong> Models usually learn better from{' '}
+          <em>changes and relative moves</em> than from raw price levels. Converting a price into
+          its return (or a rolling z-score) often helps. Leave a column as <code>none</code> to keep
+          it unchanged, or untick <strong>Keep</strong> to drop columns you don&apos;t need.
+        </p>
+        <p>
+          <strong>Not sure?</strong> Use <code>log_return</code> or <code>pct_change</code> on price
+          columns, leave volume and indicators as <code>none</code>, and drop anything tagged{' '}
+          <code>unknown</code> that you don&apos;t recognise (the <strong>DROP UNKNOWNS</strong>{' '}
+          button does this for you).
+        </p>
+        <p className="hint" style={{ marginTop: 4 }}>
+          Price columns that later steps rely on (like <code>close</code>) are always preserved even
+          after you transform them, so your indicators and labels keep working.
+        </p>
+      </div>
+
+      <details className="transform-legend">
+        <summary><strong>What do these transforms mean?</strong> (click to expand)</summary>
+        <dl>
+          <dt>none</dt><dd>Keep the column exactly as-is.</dd>
+          <dt>log_return</dt><dd>Log of the ratio between this row and the previous one — the standard way to express a price change. Good default for prices.</dd>
+          <dt>pct_change</dt><dd>Percentage change from N rows ago (e.g. +0.8%). Easy to read; similar to log_return.</dd>
+          <dt>z_score</dt><dd>How many standard deviations the value is from its recent rolling average — highlights unusually high/low moments. Uses a moving window, so no future data leaks in.</dd>
+          <dt>rolling_mean</dt><dd>Smoothed average over the last N rows — reduces noise.</dd>
+          <dt>rolling_std</dt><dd>Rolling standard deviation over N rows — a simple volatility measure.</dd>
+          <dt>rolling_min / max</dt><dd>Lowest / highest value in the last N rows — useful for breakout signals.</dd>
+          <dt>drop</dt><dd>Remove the column entirely (same as unticking Keep).</dd>
+        </dl>
+      </details>
 
       <div className="quick-actions">
         <button type="button" onClick={selectAll}>SELECT ALL</button>

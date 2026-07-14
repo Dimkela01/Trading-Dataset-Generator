@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 import './Steps.css'
 
 const METHODS = [
-  { id: 'forward_return', title: 'FORWARD RETURN', desc: 'Mid-price or execution-aware forward labels' },
-  { id: 'triple_barrier', title: 'TRIPLE BARRIER', desc: 'TP / SL / time barrier labels' },
-  { id: 'custom', title: 'CUSTOM EXPRESSION', desc: 'Pandas eval expression' },
+  { id: 'forward_return', title: 'FORWARD RETURN', desc: 'Did price go up or down over the next N bars?', recommended: true },
+  { id: 'triple_barrier', title: 'TRIPLE BARRIER', desc: 'Which comes first — a profit target, a stop-loss, or a time limit?' },
+  { id: 'custom', title: 'CUSTOM EXPRESSION', desc: 'Write your own rule (advanced)' },
 ]
 
 function MidPriceDiagram() {
@@ -56,7 +56,105 @@ function TripleBarrierDiagram({ realistic }) {
   )
 }
 
-export default function Step3_LabelGeneration({ uploadData, pipelineState, setPipelineState }) {
+function classKeyMeta(key, binary) {
+  const n = Number(key)
+  if (binary) {
+    if (n === 1) return { label: 'Profitable (1)', color: 'var(--positive)' }
+    if (n === 0) return { label: 'No trade (0)', color: '#6b6b8a' }
+  }
+  if (n === 1) return { label: 'Up (+1)', color: 'var(--positive)' }
+  if (n === -1) return { label: 'Down (−1)', color: 'var(--negative)' }
+  if (n === 0) return { label: 'Flat (0)', color: '#6b6b8a' }
+  return { label: String(key), color: '#8a8ab0' }
+}
+
+function DistributionBars({ dist, binary }) {
+  const entries = Object.entries(dist)
+  const total = entries.reduce((s, [, v]) => s + Number(v), 0) || 1
+  return (
+    <div className="dist-bars">
+      {entries.map(([key, count]) => {
+        const meta = classKeyMeta(key, binary)
+        const pct = (Number(count) / total) * 100
+        return (
+          <div className="dist-row" key={key}>
+            <span className="dist-key" style={{ color: meta.color }}>{meta.label}</span>
+            <div className="dist-track">
+              <div className="dist-fill" style={{ width: `${pct}%`, background: meta.color }} />
+            </div>
+            <span className="dist-count mono">
+              {Number(count).toLocaleString()} · {pct.toFixed(1)}%
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function RegressionStats({ stats }) {
+  const order = [
+    ['mean', 'Mean'],
+    ['std', 'Std dev'],
+    ['min', 'Min'],
+    ['max', 'Max'],
+  ]
+  return (
+    <div className="dist-stats">
+      {order.map(([k, lbl]) => (
+        <div key={k} className="dist-stat">
+          <span className="dist-stat-label">{lbl}</span>
+          <span className="dist-stat-value mono">
+            {typeof stats[k] === 'number' ? stats[k].toFixed(4) : '—'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function LabelDistribution({ preview }) {
+  if (!preview) return null
+  const { label_error, label_distribution, label_is_classification, label_row_count } = preview
+
+  if (label_error) {
+    return (
+      <div className="dist-panel dist-error">
+        <strong>⚠ Label can&apos;t be computed yet</strong>
+        <p className="mono dist-error-msg">{label_error}</p>
+      </div>
+    )
+  }
+  if (!label_distribution) return null
+
+  const values = Object.values(label_distribution)
+  const nested = values.length > 0 && values.every((v) => v && typeof v === 'object')
+
+  return (
+    <div className="dist-panel">
+      <div className="dist-head">
+        <strong>Live label distribution</strong>
+        {label_row_count != null && (
+          <span className="hint">{label_row_count.toLocaleString()} labeled rows</span>
+        )}
+      </div>
+      {nested ? (
+        Object.entries(label_distribution).map(([name, d]) => (
+          <div key={name} className="dist-group">
+            <span className="dist-group-name mono">{name}</span>
+            <DistributionBars dist={d} binary />
+          </div>
+        ))
+      ) : label_is_classification ? (
+        <DistributionBars dist={label_distribution} />
+      ) : (
+        <RegressionStats stats={label_distribution} />
+      )}
+    </div>
+  )
+}
+
+export default function Step3_LabelGeneration({ uploadData, pipelineState, setPipelineState, preview }) {
   const hasOrderBook = uploadData?.has_order_book === true
   const label = pipelineState.label || { method: 'forward_return', params: {} }
   const method = label.method || 'forward_return'
@@ -117,6 +215,21 @@ export default function Step3_LabelGeneration({ uploadData, pipelineState, setPi
     <div className="step-panel">
       <h2>Label Generation</h2>
 
+      <div className="explain">
+        <p>
+          <strong>What is a label?</strong> It&apos;s the answer you want your model to learn to
+          predict — for every row, &ldquo;what happens to the price next?&rdquo; AlphaForge works it
+          out by peeking a few bars into the future, then hides that future from the model when it
+          trains.
+        </p>
+        <p>
+          <strong>Not sure where to start?</strong> Pick <strong>Forward Return</strong> →{' '}
+          <strong>Classification</strong> → <strong>Mid Price Direction</strong>. It simply tags
+          each row as <span className="up">Up (+1)</span>, <span className="down">Down (−1)</span>,
+          or Flat (0) — the easiest target to train and to evaluate.
+        </p>
+      </div>
+
       <div className="method-cards">
         {METHODS.map((m) => (
           <button
@@ -125,7 +238,10 @@ export default function Step3_LabelGeneration({ uploadData, pipelineState, setPi
             className={`method-card ${method === m.id ? 'selected' : ''}`}
             onClick={() => setMethod(m.id)}
           >
-            <strong>{m.title}</strong>
+            <strong>
+              {m.title}
+              {m.recommended && <span className="rec-badge">recommended</span>}
+            </strong>
             <p>{m.desc}</p>
           </button>
         ))}
@@ -147,14 +263,22 @@ export default function Step3_LabelGeneration({ uploadData, pipelineState, setPi
             <label>
               Output type
               <select value={mode} onChange={(e) => setParam('mode', e.target.value)}>
-                <option value="regression">Regression</option>
-                <option value="classification">Classification</option>
+                <option value="classification">Classification (Up / Down / Flat)</option>
+                <option value="regression">Regression (exact % return)</option>
               </select>
             </label>
 
+            <div className="choice-help">
+              <strong>Classification</strong> sorts each row into a category (Up, Down, or Flat) —
+              easiest to start with and to score.{' '}
+              <strong>Regression</strong> predicts the exact percentage return instead — a harder,
+              continuous target better suited to advanced models.
+            </div>
+
             {mode === 'regression' && (
               <p className="hint">
-                Label = (mid[t+T] − mid[t]) / mid[t]. Uses bid/ask mid when available, else close.
+                Label = the price change % over the next {params.periods ?? 5} bars. Uses the bid/ask
+                mid price when your data has an order book, otherwise the close price.
               </p>
             )}
 
@@ -199,6 +323,15 @@ export default function Step3_LabelGeneration({ uploadData, pipelineState, setPi
                 {framing === 'mid_price_direction' && (
                   <>
                     <MidPriceDiagram />
+                    <div className="choice-help">
+                      Thresholds decide how big a move &ldquo;counts.&rdquo; A value of{' '}
+                      <code>0.005</code> means <strong>0.5%</strong>. A row is labeled{' '}
+                      <span style={{ color: 'var(--positive)' }}>Up</span> only if price rises more
+                      than the up threshold over the next {params.periods ?? 5} bars, and{' '}
+                      <span style={{ color: 'var(--negative)' }}>Down</span> if it falls past the
+                      down threshold. Everything in between is Flat — small moves that are usually
+                      just noise. Widen the thresholds for fewer, higher-conviction signals.
+                    </div>
                     <label>
                       Up threshold
                       <input
@@ -306,10 +439,15 @@ export default function Step3_LabelGeneration({ uploadData, pipelineState, setPi
               onChange={(e) => setParam('expression', e.target.value)}
               placeholder="close.shift(-5) > close * 1.02"
             />
-            <span className="hint">We'll validate this expression on export</span>
+            <span className="hint">
+              Validated live below — reference columns by name (e.g. <code>close</code>,{' '}
+              <code>high</code>) and use <code>.shift(-N)</code> to look ahead.
+            </span>
           </label>
         )}
       </div>
+
+      <LabelDistribution preview={preview} />
     </div>
   )
 }

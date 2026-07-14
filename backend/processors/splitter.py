@@ -1,14 +1,31 @@
 import pandas as pd
 
 
-def temporal_split(df: pd.DataFrame, train_ratio: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+def temporal_split(
+    df: pd.DataFrame,
+    train_ratio: float,
+    embargo: int = 0,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Chronological train/test split.
+
+    `embargo` purges the last `embargo` rows from the *train* set. Those rows
+    carry forward-looking labels (horizon T) that peek into the first test rows,
+    so dropping them prevents label leakage across the boundary. Test always
+    starts at the cutoff; the purged rows are simply discarded.
+    """
     train_ratio = max(0.0, min(1.0, float(train_ratio)))
-    cutoff = int(len(df) * train_ratio)
+    embargo = max(0, int(embargo))
+    n = len(df)
+    cutoff = int(n * train_ratio)
     if cutoff <= 0:
         cutoff = 1
-    if cutoff >= len(df):
-        cutoff = len(df) - 1
-    train_df = df.iloc[:cutoff].copy()
+    if cutoff >= n:
+        cutoff = n - 1
+
+    train_end = cutoff - embargo
+    if train_end < 1:  # embargo can't erase the whole train set
+        train_end = 1
+    train_df = df.iloc[:train_end].copy()
     test_df = df.iloc[cutoff:].copy()
     return train_df, test_df
 

@@ -32,9 +32,38 @@ def test_full_pipeline_temporal_export_shape(ohlcv_df):
     assert err is None
     assert "label" in result.columns
     assert "rsi_14" in result.columns
+    # `close` is a protected OHLCV column: transforming it keeps the original
+    # (so RSI can still resolve a price) and adds the derived column.
+    assert "close" in result.columns
+    assert "close_log_return" in result.columns
     train, test = meta["train_df"], meta["test_df"]
-    assert len(train) + len(test) == len(result)
+    # Forward-return horizon of 5 embargoes 5 rows at the split boundary to
+    # prevent train labels leaking into the test window.
+    assert meta["embargo"] == 5
+    assert len(train) + len(test) == len(result) - meta["embargo"]
     assert len(train) > len(test)
+
+
+def test_pipeline_sorts_unsorted_input(ohlcv_df):
+    """Rows arriving out of chronological order must be sorted before any
+    shift-based op, otherwise returns/labels/splits are silently wrong."""
+    shuffled = ohlcv_df.sample(frac=1.0, random_state=0).reset_index(drop=True)
+    state = {
+        "column_transforms": [],
+        "features": [],
+        "label": {"method": "forward_return", "params": {"periods": 3, "mode": "regression"}},
+        "split": {"method": "temporal", "params": {"train_ratio": 0.8}},
+    }
+    result, meta, err = run_pipeline(
+        shuffled,
+        state,
+        timestamp_col="datetime",
+        include_label=True,
+        include_split=True,
+    )
+    assert err is None
+    ts = result["datetime"].tolist()
+    assert ts == sorted(ts)  # output is chronological regardless of input order
 
 
 def test_pipeline_feature_error_surfaces(ohlcv_df):
