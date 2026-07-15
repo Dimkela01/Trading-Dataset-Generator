@@ -120,6 +120,7 @@ def generate_report_html(
     timestamp_col: str | None,
     label_distribution: dict | None,
     is_classification: bool,
+    rows_dropped: int = 0,
 ) -> str:
     export_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     label_cols = [c for c in full_df.columns if c == "label" or c.startswith("label_")]
@@ -194,6 +195,7 @@ def generate_report_html(
 <h1>AlphaForge Export Report</h1>
 <p class="meta">Dataset: <strong>{filename}</strong> · Exported: {export_ts}</p>
 <p class="meta">Total rows: {len(full_df)} · Train: {len(train_df)} · Test: {len(test_df)} · Features: {len(feature_cols)}</p>
+{f'<p class="meta">Dropped {rows_dropped} incomplete row(s) — warmup / forward-label NaNs — so every exported row has a full feature matrix.</p>' if rows_dropped else ''}
 
 <h2>Pipeline Summary</h2>
 <div class="section">

@@ -78,7 +78,12 @@ export default function WizardShell({
       </div>
 
       <div className="wizard-preview">
-        <LivePreview preview={preview} loading={previewLoading} error={previewError} />
+        <LivePreview
+          preview={preview}
+          loading={previewLoading}
+          error={previewError}
+          originalColumns={(uploadData?.columns || []).map((c) => c.name)}
+        />
       </div>
     </div>
   )

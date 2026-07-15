@@ -41,9 +41,67 @@
   margin-bottom: 8px;
 }
 
+.preview-warmup {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border-left: 2px solid var(--accent);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.preview-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.col-new-swatch {
+  background: var(--accent);
+}
+
+.col-label-swatch {
+  background: var(--positive);
+}
+
 .preview-table-wrap {
   flex: 1;
   overflow: auto;
+}
+
+/* New/derived columns and the label stand out from untouched originals */
+.preview-table-wrap th.col-new {
+  color: var(--accent);
+}
+
+.preview-table-wrap td.col-new {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.preview-table-wrap th.col-label {
+  color: var(--positive);
+}
+
+.preview-table-wrap td.col-label {
+  color: var(--positive);
+  background: color-mix(in srgb, var(--positive) 10%, transparent);
 }
 
 .preview-empty {

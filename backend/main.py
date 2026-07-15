@@ -9,7 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from pipeline import df_to_preview_records, run_pipeline
+from pipeline import (
+    _drop_incomplete_rows,
+    df_to_preview_records,
+    run_pipeline,
+    warmup_offset,
+)
 from processors.detector import analyze
 from processors.exporter import (
     build_metadata,
@@ -178,37 +183,53 @@ async def preview(state: PipelineState):
     if err:
         raise HTTPException(status_code=400, detail=err)
 
+    ts_col = session["timestamp_column"]
+
+    # Live label preview: compute the label on the feature-engineered frame so
+    # the wizard shows the label column, its class balance, and validates a
+    # custom expression inline. A label failure (e.g. a bad custom expression)
+    # is surfaced as a warning without discarding the column/feature preview.
+    label_cfg = state_dict.get("label")
+    labeled: pd.DataFrame | None = None
+    label_error: str | None = None
+    if label_cfg and label_cfg.get("method"):
+        labeled, label_error = apply_label(
+            result, label_cfg, _price_context_from_session(session)
+        )
+
+    # Show the frame the user will actually export: labeled when the label is
+    # valid, otherwise the feature-only frame with the error surfaced below.
+    display = labeled if (labeled is not None and not label_error) else result
+
+    # Skip the leading indicator warm-up so the preview shows populated rows,
+    # not a wall of NaNs. `final_row_count` is what export will actually write
+    # (after warmup + forward-label rows are dropped), so the count is honest.
+    offset = warmup_offset(display, ts_col)
+    cleaned, _ = _drop_incomplete_rows(display, ts_col)
+    label_cols = [c for c in display.columns if c.startswith("label")]
+
     response: dict[str, Any] = {
-        "columns": list(result.columns.astype(str)),
+        "columns": list(display.columns.astype(str)),
         "row_count": len(result),
-        "preview": df_to_preview_records(result),
+        "final_row_count": len(cleaned),
+        "preview": df_to_preview_records(display.iloc[offset:]),
+        "warmup_rows": offset,
         "features_added": meta.get("features_added", []),
+        "label_columns": label_cols,
         "label_distribution": None,
         "label_is_classification": None,
         "label_row_count": None,
-        "label_error": None,
+        "label_error": label_error,
     }
 
-    # Live label preview: compute the label on the feature-engineered frame so
-    # the wizard can show its class balance and validate a custom expression
-    # inline. A label failure (e.g. a bad custom expression) is surfaced as a
-    # warning without discarding the column/feature preview above.
-    label_cfg = state_dict.get("label")
-    if label_cfg and label_cfg.get("method"):
-        labeled, label_err = apply_label(
-            result, label_cfg, _price_context_from_session(session)
-        )
-        if label_err:
-            response["label_error"] = label_err
-        elif labeled is not None:
-            dist, is_classification = compute_label_distribution(labeled, label_cfg)
-            response["label_distribution"] = dist
-            response["label_is_classification"] = is_classification
-            label_cols = [c for c in labeled.columns if c.startswith("label")]
-            if label_cols:
-                response["label_row_count"] = int(
-                    labeled[label_cols].notna().any(axis=1).sum()
-                )
+    if labeled is not None and not label_error:
+        dist, is_classification = compute_label_distribution(labeled, label_cfg)
+        response["label_distribution"] = dist
+        response["label_is_classification"] = is_classification
+        if label_cols:
+            response["label_row_count"] = int(
+                labeled[label_cols].notna().any(axis=1).sum()
+            )
 
     return response
 
@@ -243,6 +264,8 @@ async def export_dataset(state: PipelineState):
         "label_distribution": label_dist,
         "label_columns": label_cols,
         "split_fold_used": meta.get("split_fold"),
+        "rows_dropped_incomplete": meta.get("rows_dropped_incomplete", 0),
+        "rows_before_clean": meta.get("rows_before_clean", len(result)),
     }
 
     metadata = build_metadata(state_dict, stats, session["filename"])
@@ -255,6 +278,7 @@ async def export_dataset(state: PipelineState):
         session["timestamp_column"],
         label_dist,
         is_classification,
+        rows_dropped=meta.get("rows_dropped_incomplete", 0),
     )
 
     zip_bytes = build_zip(train_df, test_df, metadata, report_html)

@@ -40,6 +40,30 @@ def _label_horizon(label_cfg: dict | None) -> int:
     return 0
 
 
+def _drop_incomplete_rows(
+    df: pd.DataFrame, timestamp_col: str | None
+) -> tuple[pd.DataFrame, int]:
+    """Drop rows the model can't learn from before splitting.
+
+    Two sources of NaN contaminate a freshly engineered frame: leading *warmup*
+    rows where rolling windows / returns haven't filled yet, and trailing rows
+    where a forward-looking label peeked past the end of the data. Both leave
+    NaNs in the numeric feature/label matrix. We drop any row with a NaN in a
+    numeric column (the timestamp is metadata, not a feature, so it's exempt),
+    yielding a train/test set with no gaps. Returns the cleaned frame and the
+    number of rows removed."""
+    check_cols = [
+        c
+        for c in df.columns
+        if c != timestamp_col and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    if not check_cols:
+        return df, 0
+    before = len(df)
+    cleaned = df.dropna(subset=check_cols).reset_index(drop=True)
+    return cleaned, before - len(cleaned)
+
+
 def _sort_by_time(df: pd.DataFrame, timestamp_col: str | None) -> pd.DataFrame:
     """Guarantee ascending chronological order before any shift-based op.
 
@@ -97,6 +121,13 @@ def run_pipeline(
         method = split_cfg.get("method", "temporal")
         params = split_cfg.get("params") or {}
 
+        # Drop warmup / forward-label NaN rows so the exported train/test sets
+        # contain a fully-populated feature matrix (see _drop_incomplete_rows).
+        rows_before = len(working)
+        working, dropped = _drop_incomplete_rows(working, timestamp_col)
+        meta["rows_dropped_incomplete"] = dropped
+        meta["rows_before_clean"] = rows_before
+
         # Embargo = label horizon: purge boundary rows whose forward-looking
         # labels would otherwise leak future (test) information into training.
         embargo = _label_horizon(state.get("label")) if include_label else 0
@@ -119,6 +150,27 @@ def run_pipeline(
         meta["test_df"] = test_df
 
     return working, meta, None
+
+
+def warmup_offset(df: pd.DataFrame, timestamp_col: str | None) -> int:
+    """Row position where every numeric column is first populated.
+
+    Rolling/return features leave the leading rows NaN, so ``df.head()`` would
+    show the user a wall of blanks right after they add the feature they're
+    tuning. Starting the preview here lets them see real computed values. The
+    timestamp is exempt (it's never a feature). Returns 0 when nothing is fully
+    populated (e.g. an all-NaN column) so the caller falls back to the head."""
+    num_cols = [
+        c
+        for c in df.columns
+        if c != timestamp_col and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    if not num_cols:
+        return 0
+    all_valid = df[num_cols].notna().all(axis=1).to_numpy()
+    if not all_valid.any():
+        return 0
+    return int(all_valid.argmax())
 
 
 def df_to_preview_records(df: pd.DataFrame, limit: int = 20) -> list[dict]:

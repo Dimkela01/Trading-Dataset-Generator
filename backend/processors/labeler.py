@@ -76,11 +76,17 @@ def _forward_return(
 
         if direction in ("long", "both"):
             long_return = (bid.shift(-periods) - ask) / ask
-            result["label_long"] = (long_return > min_profit).astype(float)
+            # NaN (not 0) where the forward window runs past the data end, so
+            # these unknowable rows are dropped rather than labeled "unprofitable".
+            result["label_long"] = np.where(
+                long_return.isna(), np.nan, (long_return > min_profit).astype(float)
+            )
 
         if direction in ("short", "both"):
             short_return = (bid - ask.shift(-periods)) / bid
-            result["label_short"] = (short_return > min_profit).astype(float)
+            result["label_short"] = np.where(
+                short_return.isna(), np.nan, (short_return > min_profit).astype(float)
+            )
 
         if direction == "long":
             result["label"] = result["label_long"]
@@ -88,13 +94,16 @@ def _forward_return(
             result["label"] = result["label_short"]
         return result
 
-    # Mid price direction (default classification)
+    # Mid price direction (default classification). Rows whose forward window
+    # runs past the data end have a NaN return and must stay NaN — labeling them
+    # Flat (0) would inject fabricated "no move" samples at the series tail.
     up_threshold = float(params.get("up_threshold", 0.005))
     down_threshold = float(params.get("down_threshold", -0.005))
-    labels = np.zeros(len(result))
-    labels[mid_return > up_threshold] = 1
-    labels[mid_return < down_threshold] = -1
-    result["label"] = labels
+    result["label"] = np.where(
+        mid_return.isna(),
+        np.nan,
+        np.where(mid_return > up_threshold, 1.0, np.where(mid_return < down_threshold, -1.0, 0.0)),
+    )
     return result
 
 
@@ -128,7 +137,13 @@ def _triple_barrier_simple(
             if price <= lower:
                 label = -1
                 break
-        labels[i] = label
+        # A "0" (no barrier hit) is only trustworthy over a *full* horizon. Near
+        # the end of the series the window is truncated, so an untouched barrier
+        # is unknown, not a genuine timeout → NaN so the row is dropped.
+        if label == 0 and (end - (i + 1)) < max_periods:
+            labels[i] = np.nan
+        else:
+            labels[i] = label
     return labels
 
 
@@ -166,7 +181,11 @@ def _triple_barrier_realistic(
             if b <= lower:
                 label = -1
                 break
-        labels[i] = label
+        # Truncated horizon at the series tail → an untouched barrier is unknown.
+        if label == 0 and (end - (i + 1)) < max_periods:
+            labels[i] = np.nan
+        else:
+            labels[i] = label
     return labels
 
 
