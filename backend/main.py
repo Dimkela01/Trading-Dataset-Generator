@@ -22,7 +22,7 @@ from processors.exporter import (
     compute_label_distribution,
     generate_report_html,
 )
-from processors.labeler import apply_label
+from processors.labeler import apply_label, predicted_label_columns
 
 app = FastAPI(title="AlphaForge API")
 
@@ -167,7 +167,7 @@ async def select_asset(body: SelectAssetRequest):
 
 
 @app.post("/preview")
-async def preview(state: PipelineState):
+async def preview(state: PipelineState, with_label: bool = True):
     session = _get_session(state.session_id)
     state_dict = _state_to_dict(state)
 
@@ -189,10 +189,19 @@ async def preview(state: PipelineState):
     # the wizard shows the label column, its class balance, and validates a
     # custom expression inline. A label failure (e.g. a bad custom expression)
     # is surfaced as a warning without discarding the column/feature preview.
+    # `with_label` is off for the Columns/Features steps so the preview shows
+    # the raw + engineered dataset only; the label is a Labels-step concern and
+    # would otherwise appear before the user has configured it.
     label_cfg = state_dict.get("label")
     labeled: pd.DataFrame | None = None
     label_error: str | None = None
-    if label_cfg and label_cfg.get("method"):
+    label_collisions: list[str] = []
+    if with_label and label_cfg and label_cfg.get("method"):
+        # A generated label column would overwrite a same-named user column;
+        # the labeler preserves it as "<name>_source" — tell the user which.
+        label_collisions = [
+            c for c in predicted_label_columns(label_cfg) if c in result.columns
+        ]
         labeled, label_error = apply_label(
             result, label_cfg, _price_context_from_session(session)
         )
@@ -216,6 +225,7 @@ async def preview(state: PipelineState):
         "warmup_rows": offset,
         "features_added": meta.get("features_added", []),
         "label_columns": label_cols,
+        "label_collisions": label_collisions,
         "label_distribution": None,
         "label_is_classification": None,
         "label_row_count": None,

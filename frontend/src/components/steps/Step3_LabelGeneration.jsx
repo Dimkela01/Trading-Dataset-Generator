@@ -211,9 +211,33 @@ export default function Step3_LabelGeneration({ uploadData, pipelineState, setPi
   const framing = params.framing || 'mid_price_direction'
   const barrierMode = params.barrier_mode || 'simple'
 
+  const collisions = preview?.label_collisions || []
+
   return (
     <div className="step-panel">
       <h2>Label Generation</h2>
+
+      {collisions.length > 0 && (
+        <div className="collision-warn">
+          <strong>⚠ Heads up:</strong> your file already{' '}
+          {collisions.length > 1 ? 'has columns' : 'has a column'} named{' '}
+          {collisions.map((c, i) => (
+            <span key={c}>
+              {i > 0 && ', '}
+              <code>{c}</code>
+            </span>
+          ))}
+          . AlphaForge generates {collisions.length > 1 ? 'these labels' : 'this label'} itself, so
+          your original {collisions.length > 1 ? 'columns are' : 'column is'} preserved as{' '}
+          {collisions.map((c, i) => (
+            <span key={c}>
+              {i > 0 && ', '}
+              <code>{c}_source</code>
+            </span>
+          ))}{' '}
+          and the generated label takes {collisions.length > 1 ? 'their' : 'its'} place.
+        </div>
+      )}
 
       <div className="explain">
         <p>

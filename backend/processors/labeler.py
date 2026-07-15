@@ -4,6 +4,60 @@ import pandas as pd
 LABEL_COLUMNS = ("label", "label_long", "label_short")
 
 
+def predicted_label_columns(label_config: dict | None) -> list[str]:
+    """Column names ``apply_label`` will write for this config.
+
+    Callers use this to detect a collision with a column the user's file
+    already contains (e.g. a pre-existing ``label``) before it gets overwritten.
+    """
+    if not label_config:
+        return []
+    method = label_config.get("method")
+    params = label_config.get("params") or {}
+
+    if method == "forward_return":
+        mode = params.get("mode", params.get("output_type", "regression"))
+        framing = params.get("framing", "mid_price_direction")
+        if mode == "classification" and framing == "execution_aware":
+            direction = params.get("direction", "long")
+            if direction == "long":
+                return ["label_long", "label"]
+            if direction == "short":
+                return ["label_short", "label"]
+            return ["label_long", "label_short"]
+        return ["label"]
+    # triple_barrier and custom both write a single "label".
+    return ["label"]
+
+
+def _free_name(taken: set[str], base: str) -> str:
+    name = f"{base}_source"
+    i = 2
+    while name in taken:
+        name = f"{base}_source_{i}"
+        i += 1
+    return name
+
+
+def _preserve_colliding(
+    df: pd.DataFrame, predicted: list[str]
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Rename any user column that a generated label would overwrite.
+
+    A file that already has a ``label`` column must not lose it when AlphaForge
+    generates its own — the original is preserved as ``label_source`` so the
+    generated label can take the canonical name.
+    """
+    existing = set(df.columns.astype(str))
+    to_rename: dict[str, str] = {}
+    for col in predicted:
+        if col in existing:
+            to_rename[col] = _free_name(existing | set(to_rename.values()), col)
+    if to_rename:
+        df = df.rename(columns=to_rename)
+    return df, to_rename
+
+
 def _get_close_col(df: pd.DataFrame, ohlcv_map: dict | None) -> str | None:
     ohlcv_map = ohlcv_map or {}
     if "close" in ohlcv_map and ohlcv_map["close"] in df.columns:
@@ -253,6 +307,10 @@ def apply_label(
 
     method = label_config.get("method")
     params = label_config.get("params") or {}
+
+    # Preserve any user column the generated label would clobber (e.g. a
+    # pre-existing "label") by renaming it to "<name>_source" first.
+    df, _ = _preserve_colliding(df, predicted_label_columns(label_config))
 
     try:
         if method == "forward_return":

@@ -20,8 +20,8 @@ export async function uploadFile(file) {
   return res.json()
 }
 
-export async function previewPipeline(pipelineState) {
-  const res = await fetch(`${BASE}/preview`, {
+export async function previewPipeline(pipelineState, withLabel = true) {
+  const res = await fetch(`${BASE}/preview?with_label=${withLabel ? 'true' : 'false'}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(pipelineState),

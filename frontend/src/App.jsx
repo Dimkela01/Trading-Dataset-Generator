@@ -85,11 +85,15 @@ export default function App() {
   useEffect(() => {
     if (screen !== 'wizard' || !pipelineState) return
 
+    // The label is only relevant from the Labels step onward; showing it on
+    // Columns/Features would surface a label the user hasn't configured yet.
+    const withLabel = wizardStep >= 3
+
     const timer = setTimeout(async () => {
       setPreviewLoading(true)
       setPreviewError(null)
       try {
-        const result = await previewPipeline(pipelineState)
+        const result = await previewPipeline(pipelineState, withLabel)
         setPreview(result)
       } catch (e) {
         setPreviewError(e.message)
@@ -99,7 +103,7 @@ export default function App() {
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [pipelineState, screen])
+  }, [pipelineState, screen, wizardStep])
 
   return (
     <>
