@@ -39,6 +39,7 @@ export default function App() {
   const [preview, setPreview] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
 
   const applyUploadResult = useCallback((data) => {
     setSessionId(data.session_id)
@@ -54,11 +55,12 @@ export default function App() {
   const handleUpload = useCallback(
     async (file) => {
       setLoading(true)
+      setUploadError(null)
       try {
         const data = await uploadFile(file)
         applyUploadResult(data)
       } catch (e) {
-        alert(e.message)
+        setUploadError(e.message)
       } finally {
         setLoading(false)
       }
@@ -69,12 +71,13 @@ export default function App() {
   const handleAssetSelect = useCallback(
     async (symbolValue) => {
       setLoading(true)
+      setUploadError(null)
       try {
         const data = await selectAsset(sessionId, uploadData.symbol_column, symbolValue)
         applyUploadResult({ ...data, is_multi_asset: false })
         setScreen('summary')
       } catch (e) {
-        alert(e.message)
+        setUploadError(e.message)
       } finally {
         setLoading(false)
       }
@@ -112,16 +115,20 @@ export default function App() {
         <span>trading dataset preparation</span>
       </header>
 
-      {screen === 'upload' && <UploadZone onUpload={handleUpload} loading={loading} />}
+      {screen === 'upload' && (
+        <UploadZone onUpload={handleUpload} loading={loading} error={uploadError} />
+      )}
 
       {screen === 'assetSelect' && uploadData && (
         <AssetSelect
           data={uploadData}
           onSelect={handleAssetSelect}
+          error={uploadError}
           onBackToUpload={() => {
             setScreen('upload')
             setUploadData(null)
             setSessionId(null)
+            setUploadError(null)
           }}
         />
       )}

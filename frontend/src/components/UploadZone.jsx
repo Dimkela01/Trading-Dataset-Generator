@@ -25,7 +25,7 @@ function DataIcon() {
   )
 }
 
-export default function UploadZone({ onUpload, loading }) {
+export default function UploadZone({ onUpload, loading, error }) {
   const [dragOver, setDragOver] = useState(false)
   const [visibleLogs, setVisibleLogs] = useState([])
 
@@ -86,6 +86,13 @@ export default function UploadZone({ onUpload, loading }) {
           />
         </label>
       </div>
+
+      {error && (
+        <div className="upload-error mono" role="alert">
+          <span className="upload-error-icon">✕</span> Couldn&apos;t read that file: {error}
+          <span className="upload-error-hint">Try a CSV or Parquet file with a timestamp column.</span>
+        </div>
+      )}
 
       <div className="feature-pills">
         {FEATURE_PILLS.map((p) => (

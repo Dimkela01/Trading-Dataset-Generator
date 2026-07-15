@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './AssetSelect.css'
 
-export default function AssetSelect({ data, onSelect, onBackToUpload }) {
+export default function AssetSelect({ data, onSelect, onBackToUpload, error }) {
   const [selected, setSelected] = useState(null)
   const counts = data.symbol_row_counts || {}
   const symbols = data.symbols || []
@@ -27,6 +27,12 @@ export default function AssetSelect({ data, onSelect, onBackToUpload }) {
           </button>
         ))}
       </div>
+
+      {error && (
+        <div className="upload-error mono" role="alert">
+          <span className="upload-error-icon">✕</span> {error}
+        </div>
+      )}
 
       <div className="asset-actions">
         <button
