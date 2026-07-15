@@ -22,8 +22,6 @@ from processors.exporter import (
     compute_label_distribution,
     generate_report_html,
 )
-from processors.labeler import apply_label, predicted_label_columns
-
 app = FastAPI(title="AlphaForge API")
 
 app.add_middleware(
@@ -171,75 +169,62 @@ async def preview(state: PipelineState, with_label: bool = True):
     session = _get_session(state.session_id)
     state_dict = _state_to_dict(state)
 
+    # The preview runs the *same* pipeline the export does, so what the user
+    # sees is what they download. `soft_label` keeps the column/feature preview
+    # alive while a custom expression is still being typed, surfacing the label
+    # failure as a warning instead of blanking the screen.
+    # `with_label` is off for the Columns/Features steps: the label is a
+    # Labels-step concern and would otherwise appear before it's configured.
     result, meta, err = run_pipeline(
         session["df"],
         state_dict,
         timestamp_col=session["timestamp_column"],
         ohlcv_map=session.get("ohlcv_map", {}),
-        include_label=False,
+        include_label=with_label,
         include_split=False,
         price_context=_price_context_from_session(session),
+        soft_label=True,
     )
     if err:
         raise HTTPException(status_code=400, detail=err)
 
     ts_col = session["timestamp_column"]
-
-    # Live label preview: compute the label on the feature-engineered frame so
-    # the wizard shows the label column, its class balance, and validates a
-    # custom expression inline. A label failure (e.g. a bad custom expression)
-    # is surfaced as a warning without discarding the column/feature preview.
-    # `with_label` is off for the Columns/Features steps so the preview shows
-    # the raw + engineered dataset only; the label is a Labels-step concern and
-    # would otherwise appear before the user has configured it.
     label_cfg = state_dict.get("label")
-    labeled: pd.DataFrame | None = None
-    label_error: str | None = None
-    label_collisions: list[str] = []
-    if with_label and label_cfg and label_cfg.get("method"):
-        # A generated label column would overwrite a same-named user column;
-        # the labeler preserves it as "<name>_source" — tell the user which.
-        label_collisions = [
-            c for c in predicted_label_columns(label_cfg) if c in result.columns
-        ]
-        labeled, label_error = apply_label(
-            result, label_cfg, _price_context_from_session(session)
-        )
-
-    # Show the frame the user will actually export: labeled when the label is
-    # valid, otherwise the feature-only frame with the error surfaced below.
-    display = labeled if (labeled is not None and not label_error) else result
+    label_error = meta.get("label_error")
 
     # Skip the leading indicator warm-up so the preview shows populated rows,
     # not a wall of NaNs. `final_row_count` is what export will actually write
     # (after warmup + forward-label rows are dropped), so the count is honest.
-    offset = warmup_offset(display, ts_col)
-    cleaned, _ = _drop_incomplete_rows(display, ts_col)
-    label_cols = [c for c in display.columns if c.startswith("label")]
+    offset = warmup_offset(result, ts_col)
+    cleaned, _ = _drop_incomplete_rows(result, ts_col)
+    label_cols = [c for c in result.columns if c.startswith("label")]
 
     response: dict[str, Any] = {
-        "columns": list(display.columns.astype(str)),
-        "row_count": len(result),
+        "columns": list(result.columns.astype(str)),
+        # Columns a feature may be built from: includes ones awaiting a deferred
+        # drop, which is why this differs from the exported `columns` above.
+        "available_columns": meta.get("available_columns", []),
+        "columns_dropped": meta.get("columns_dropped", []),
+        "row_count": meta.get("rows_after_features", len(result)),
         "final_row_count": len(cleaned),
-        "preview": df_to_preview_records(display.iloc[offset:]),
+        "preview": df_to_preview_records(result.iloc[offset:]),
         "warmup_rows": offset,
         "features_added": meta.get("features_added", []),
         "label_columns": label_cols,
-        "label_collisions": label_collisions,
+        "label_collisions": meta.get("label_collisions", []),
         "label_distribution": None,
         "label_is_classification": None,
         "label_row_count": None,
         "label_error": label_error,
     }
 
-    if labeled is not None and not label_error:
-        dist, is_classification = compute_label_distribution(labeled, label_cfg)
+    if with_label and label_cfg and not label_error and label_cols:
+        dist, is_classification = compute_label_distribution(result, label_cfg)
         response["label_distribution"] = dist
         response["label_is_classification"] = is_classification
-        if label_cols:
-            response["label_row_count"] = int(
-                labeled[label_cols].notna().any(axis=1).sum()
-            )
+        response["label_row_count"] = int(
+            result[label_cols].notna().any(axis=1).sum()
+        )
 
     return response
 

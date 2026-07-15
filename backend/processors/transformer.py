@@ -48,19 +48,30 @@ def apply_transforms(
     column_transforms: list[dict],
     timestamp_col: str | None,
     protected_cols: set[str] | None = None,
-) -> pd.DataFrame:
-    """Apply per-column transforms.
+) -> tuple[pd.DataFrame, set[str]]:
+    """Derive the transformed columns and report which originals to retire.
 
-    `protected_cols` are the raw price/volume/bid/ask columns that downstream
-    stages (indicators, labels) resolve *by name* (e.g. ``close``). When a
-    protected column is transformed, we keep the original alongside the derived
-    column instead of dropping it — otherwise transforming ``close`` would make
-    RSI/MACD/labels unable to find their price series. An explicit ``drop`` on a
-    protected column is still honoured (the user asked for it).
+    Returns ``(frame, deferred_drops)``. Nothing is removed here: the frame comes
+    back with every derived column *added* and every original still present, and
+    `deferred_drops` names the columns the caller should remove once the later
+    stages have run (see ``pipeline.run_pipeline``).
+
+    Dropping late is what makes the obvious workflow possible — derive a feature
+    from a column and *then* discard it. Removing columns here, before features
+    and labels exist, means "untick Keep on volume" and "add a close/volume
+    ratio" are mutually exclusive, and dropping raw ``close`` would take the
+    label's price series with it. Unticking Keep is a statement about the
+    *exported* columns, not an instruction to delete the data mid-pipeline.
+
+    A column is retired for two reasons: the user asked to ``drop`` it, or it was
+    transformed and the derived column supersedes it. `protected_cols` (the raw
+    price/volume/bid/ask columns that later stages resolve by name) are exempt
+    from the second case only — an explicit ``drop`` is still honoured.
     """
     result = df.copy()
     protected_cols = protected_cols or set()
     transform_map = {t["column"]: t for t in column_transforms}
+    deferred_drops: set[str] = set()
 
     cols_to_process = [
         c for c in result.columns
@@ -73,28 +84,27 @@ def apply_transforms(
         params = cfg.get("params") or {}
 
         if transform == "drop":
-            if col in result.columns:
-                result = result.drop(columns=[col])
+            deferred_drops.add(col)
             continue
 
-        if col not in result.columns:
+        if transform == "none":
             continue
 
         if not pd.api.types.is_numeric_dtype(result[col]):
             continue
 
         new_series = _apply_single(result[col], transform, params)
-        if new_series is not None:
-            if transform == "none":
-                continue
-            suffix = transform if transform != "pct_change" else f"pct_change_{params.get('periods', 1)}"
-            if transform in ("z_score", "rolling_mean", "rolling_std", "rolling_min", "rolling_max"):
-                suffix = f"{transform}_{params.get('window', 20)}"
-            new_name = f"{col}_{suffix}"
-            result[new_name] = new_series
-            # Drop the original only if it isn't a protected price column that
-            # downstream indicators/labels still need to resolve by name.
-            if transform != "none" and col not in protected_cols:
-                result = result.drop(columns=[col])
+        if new_series is None:
+            continue
 
-    return result
+        suffix = transform if transform != "pct_change" else f"pct_change_{params.get('periods', 1)}"
+        if transform in ("z_score", "rolling_mean", "rolling_std", "rolling_min", "rolling_max"):
+            suffix = f"{transform}_{params.get('window', 20)}"
+        new_name = f"{col}_{suffix}"
+        result[new_name] = new_series
+        # The derived column supersedes the original — unless the original is a
+        # protected price column that indicators/labels still resolve by name.
+        if col not in protected_cols:
+            deferred_drops.add(col)
+
+    return result, deferred_drops

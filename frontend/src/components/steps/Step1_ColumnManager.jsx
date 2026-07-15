@@ -115,6 +115,12 @@ export default function Step1_ColumnManager({ uploadData, pipelineState, setPipe
           Price columns that later steps rely on (like <code>close</code>) are always preserved even
           after you transform them, so your indicators and labels keep working.
         </p>
+        <p className="hint" style={{ marginTop: 4 }}>
+          <strong>Keep</strong> controls the <em>exported</em> dataset, not the pipeline. Unticking a
+          column still lets you build features and labels from it in the next steps — it&apos;s
+          removed at the end. So you can derive <code>close / volume</code> and still leave{' '}
+          <code>volume</code> out of the final file.
+        </p>
       </div>
 
       <details className="transform-legend">

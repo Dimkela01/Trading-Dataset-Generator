@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './Steps.css'
 
 // Indicators that run on a single price series which AlphaForge resolves
@@ -32,8 +32,15 @@ const INDICATORS = [
 
 const COLUMN_PARAM_KEYS = ['column', 'col_a', 'col_b', 'col_bid', 'col_ask']
 
-const numericCols = (uploadData) =>
-  uploadData.columns.filter((c) => c.detected_type !== 'timestamp').map((c) => c.name)
+// Columns a feature can actually be built from, straight from the live pipeline:
+// the originals, whatever Step 1's transforms derived, and whatever earlier
+// features added. The upload analysis is only a fallback for the first render —
+// on its own it's stale the moment Step 1 changes anything, offering columns
+// that no longer exist and hiding the derived ones the user came here to use.
+const availableCols = (preview, uploadData) =>
+  preview?.available_columns?.length
+    ? preview.available_columns
+    : uploadData.columns.filter((c) => c.detected_type !== 'timestamp').map((c) => c.name)
 
 // Best-guess a column whose name matches one of the given fragments.
 const guessCol = (cols, fragments) =>
@@ -47,14 +54,36 @@ const defaultForColumnKey = (key, cols) => {
 
 export default function Step2_FeatureEngineering({ uploadData, pipelineState, setPipelineState, preview }) {
   const [selected, setSelected] = useState('mid')
-  const cols = numericCols(uploadData)
+  const cols = useMemo(() => availableCols(preview, uploadData), [preview, uploadData])
+  const droppedCols = preview?.columns_dropped || []
   const [params, setParams] = useState(() => ({
-    col_bid: defaultForColumnKey('col_bid', cols),
-    col_ask: defaultForColumnKey('col_ask', cols),
+    col_bid: defaultForColumnKey('col_bid', availableCols(preview, uploadData)),
+    col_ask: defaultForColumnKey('col_ask', availableCols(preview, uploadData)),
   }))
+
+  // The column list shifts as Step 1 is edited. Re-point any picker left on a
+  // column that no longer exists, so the form can't submit a stale name.
+  useEffect(() => {
+    if (!cols.length) return
+    setParams((prev) => {
+      const next = { ...prev }
+      let changed = false
+      for (const key of Object.keys(next)) {
+        if (COLUMN_PARAM_KEYS.includes(key) && !cols.includes(next[key])) {
+          next[key] = defaultForColumnKey(key, cols)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [cols])
 
   const indicator = INDICATORS.find((i) => i.type === selected)
   const featuresAdded = preview?.features_added || []
+  const usesDropped = (indicator?.params || [])
+    .filter((p) => COLUMN_PARAM_KEYS.includes(p.key))
+    .map((p) => params[p.key])
+    .filter((c) => droppedCols.includes(c))
 
   const addFeature = () => {
     setPipelineState((s) => ({
@@ -157,7 +186,9 @@ export default function Step2_FeatureEngineering({ uploadData, pipelineState, se
                     onChange={(e) => setParams({ ...params, [p.key]: e.target.value })}
                   >
                     {cols.map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>
+                        {c}{droppedCols.includes(c) ? ' — dropped from export' : ''}
+                      </option>
                     ))}
                   </select>
                 ) : (
@@ -175,6 +206,16 @@ export default function Step2_FeatureEngineering({ uploadData, pipelineState, se
               </label>
             ))}
           </div>
+
+          {usesDropped.length > 0 && (
+            <p className="price-note">
+              <strong>{usesDropped.join(', ')}</strong>{' '}
+              {usesDropped.length > 1 ? 'are' : 'is'} unticked in Column Manager.{' '}
+              {usesDropped.length > 1 ? 'They' : 'It'} will still be used to compute this
+              feature — the column is only removed from the final export, so the feature keeps
+              its values.
+            </p>
+          )}
 
           <button type="button" className="primary" onClick={addFeature}>ADD →</button>
         </div>

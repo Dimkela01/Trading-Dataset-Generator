@@ -1,7 +1,113 @@
+import ast
+
 import numpy as np
 import pandas as pd
 
 LABEL_COLUMNS = ("label", "label_long", "label_short")
+
+# Roles a custom expression may use when the file doesn't name its columns that
+# way (e.g. a "px_last" column reachable as `close`). Resolved through the
+# detector's mapping — never by scanning column names for a substring.
+_EXPRESSION_ROLES = ("open", "high", "low", "close", "volume", "bid", "ask")
+
+# Bare functions an expression may call.
+_ALLOWED_FUNCS = {
+    "abs": np.abs,
+    "log": np.log,
+    "log1p": np.log1p,
+    "exp": np.exp,
+    "sqrt": np.sqrt,
+    "sign": np.sign,
+    "minimum": np.minimum,
+    "maximum": np.maximum,
+    "where": np.where,
+}
+
+# Methods an expression may call on a column. Allowlisted because `pd.eval` is
+# not a sandbox: it executes arbitrary method calls, so `close.to_csv('...')`
+# writes a file to the host and `close.__class__` walks out of the namespace.
+_ALLOWED_METHODS = frozenset(
+    {
+        "shift", "diff", "pct_change", "abs", "clip", "fillna", "round",
+        "rolling", "ewm", "cumsum", "cumprod", "rank", "notna", "isna",
+        "mean", "std", "var", "median", "sum", "min", "max", "quantile",
+    }
+)
+
+# Syntax an expression may use. Anything absent — subscripts, lambdas,
+# comprehensions, assignments, imports — is rejected before evaluation.
+_ALLOWED_NODES = (
+    ast.Expression, ast.BinOp, ast.UnaryOp, ast.Compare, ast.Call,
+    ast.Attribute, ast.Name, ast.Constant, ast.Load, ast.keyword,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
+    ast.BitAnd, ast.BitOr, ast.BitXor, ast.Invert,
+    ast.USub, ast.UAdd, ast.Not,
+    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+)
+
+
+def _expression_namespace(df: pd.DataFrame, price_context: dict | None) -> dict:
+    """Names a custom expression may reference, bound to their series.
+
+    Real column names bind to themselves and always win — a column literally
+    named ``close`` is what the user means by ``close``. Role aliases only fill
+    gaps, and resolve through the detector's OHLCV/bid/ask mapping.
+
+    The mapping matters: matching roles by substring binds ``close`` to a
+    derived ``close_log_return`` whenever one exists, so an expression like
+    ``close.shift(-5) > close * 1.02`` silently compares log returns and yields a
+    plausible-looking but entirely wrong label.
+    """
+    ctx = price_context or {}
+    ohlcv_map = ctx.get("ohlcv_map") or {}
+
+    namespace = {
+        str(c): df[c] for c in df.columns if pd.api.types.is_numeric_dtype(df[c])
+    }
+
+    role_cols = {r: ohlcv_map[r] for r in _EXPRESSION_ROLES if ohlcv_map.get(r)}
+    if ctx.get("bid_column"):
+        role_cols["bid"] = ctx["bid_column"]
+    if ctx.get("ask_column"):
+        role_cols["ask"] = ctx["ask_column"]
+
+    for role, col in role_cols.items():
+        if role in namespace:
+            continue
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            namespace[role] = df[col]
+
+    return namespace
+
+
+def _validate_expression(expression: str, allowed_names: set[str]) -> ast.Expression:
+    """Parse an expression and reject anything outside the allowlists."""
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError as e:
+        raise ValueError(f"Could not parse expression: {e.msg}") from None
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BoolOp):
+            raise ValueError(
+                "Use '&' and '|' (not 'and'/'or') to combine conditions, "
+                "and bracket each side: (a > 1) & (b < 2)"
+            )
+        if not isinstance(node, _ALLOWED_NODES):
+            raise ValueError(
+                f"{type(node).__name__} is not allowed in a label expression"
+            )
+        if isinstance(node, ast.Attribute) and node.attr not in _ALLOWED_METHODS:
+            raise ValueError(
+                f"'.{node.attr}' is not allowed in a label expression. "
+                f"Allowed: {', '.join(sorted(_ALLOWED_METHODS))}"
+            )
+        if isinstance(node, ast.Name) and node.id not in allowed_names:
+            raise ValueError(
+                f"Unknown name '{node.id}'. Available columns: "
+                f"{', '.join(sorted(allowed_names))}"
+            )
+    return tree
 
 
 def predicted_label_columns(label_config: dict | None) -> list[str]:
@@ -267,26 +373,46 @@ def _triple_barrier(
     return result
 
 
-def _custom_label(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+def _custom_label(
+    df: pd.DataFrame,
+    params: dict,
+    price_context: dict | None = None,
+) -> pd.DataFrame:
     result = df.copy()
-    expression = params.get("expression", "")
-    if not expression.strip():
+    expression = (params.get("expression") or "").strip()
+    if not expression:
         raise ValueError("Custom label expression is required")
 
-    local_dict = {
-        str(c): result[c] for c in result.columns if pd.api.types.is_numeric_dtype(result[c])
-    }
-    for role in ("open", "high", "low", "close", "volume", "bid", "ask"):
-        for c in result.columns:
-            norm = str(c).lower()
-            if role in norm:
-                local_dict[role] = result[c]
+    namespace = _expression_namespace(result, price_context)
+    tree = _validate_expression(expression, set(namespace) | set(_ALLOWED_FUNCS))
 
-    evaluated = pd.eval(expression, local_dict=local_dict)
+    try:
+        evaluated = eval(  # noqa: S307 — AST allowlisted above, no builtins
+            compile(tree, "<label expression>", "eval"),
+            {"__builtins__": {}},
+            {**_ALLOWED_FUNCS, **namespace},
+        )
+    except Exception as e:
+        raise ValueError(f"Expression failed: {e}") from None
+
     if isinstance(evaluated, pd.Series):
         result["label"] = evaluated.astype(float)
-    else:
+    elif isinstance(evaluated, np.ndarray):
+        if evaluated.shape != (len(result),):
+            raise ValueError(
+                f"Expression produced {evaluated.shape[0]} values for "
+                f"{len(result)} rows — it must return one value per row."
+            )
+        result["label"] = evaluated.astype(float)
+    elif np.isscalar(evaluated):
+        # A constant is almost always a mistake (e.g. comparing two aggregates),
+        # but it's a valid frame-wide label, so allow it.
         result["label"] = float(evaluated)
+    else:
+        raise ValueError(
+            "Expression must produce one value per row (a column), not "
+            f"{type(evaluated).__name__}."
+        )
     return result
 
 
@@ -318,7 +444,7 @@ def apply_label(
         elif method == "triple_barrier":
             result = _triple_barrier(df, params, price_context)
         elif method == "custom":
-            result = _custom_label(df, params)
+            result = _custom_label(df, params, price_context)
         else:
             return None, f"Unknown label method: {method}"
 

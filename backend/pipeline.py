@@ -5,7 +5,7 @@ import pandas as pd
 
 from processors.transformer import apply_transforms
 from processors.features import apply_features
-from processors.labeler import apply_label
+from processors.labeler import apply_label, predicted_label_columns
 from processors.splitter import temporal_split, walk_forward_split
 
 
@@ -86,7 +86,21 @@ def run_pipeline(
     include_label: bool = True,
     include_split: bool = True,
     price_context: dict | None = None,
+    soft_label: bool = False,
 ) -> tuple[pd.DataFrame | None, dict[str, Any] | None, str | None]:
+    """Run the configured stages in dependency order.
+
+    Order is: sort → derive transforms → features → label → retire columns →
+    drop incomplete rows → split. Column removal deliberately comes *last* among
+    the column stages so features and labels can consume a column the user has
+    unticked (see ``transformer.apply_transforms``).
+
+    With `soft_label`, a label failure is reported in ``meta["label_error"]``
+    and the frame is returned unlabeled rather than collapsing the whole run —
+    the wizard needs to keep showing the column/feature preview while the user
+    is still typing a custom expression. Every other stage behaves identically,
+    so what the preview shows is what the export writes.
+    """
     meta: dict[str, Any] = {"features_added": []}
     ohlcv_map = ohlcv_map or {}
 
@@ -95,7 +109,7 @@ def run_pipeline(
 
     protected_cols = _protected_columns(working, ohlcv_map, price_context)
     column_transforms = state.get("column_transforms") or []
-    working = apply_transforms(
+    working, deferred_drops = apply_transforms(
         working, column_transforms, timestamp_col, protected_cols=protected_cols
     )
 
@@ -106,15 +120,50 @@ def run_pipeline(
         if err:
             return None, None, err
 
-    if include_label:
-        label_cfg = state.get("label")
-        if label_cfg:
-            ctx = price_context or {}
-            if ohlcv_map:
-                ctx = {**ctx, "ohlcv_map": ohlcv_map}
-            working, err = apply_label(working, label_cfg, ctx)
-            if err:
+    # What a feature picker or custom expression may legitimately reference:
+    # everything derived so far, *including* originals awaiting a deferred drop.
+    # This is deliberately not the exported column set.
+    meta["available_columns"] = [
+        str(c)
+        for c in working.columns
+        if c != timestamp_col and pd.api.types.is_numeric_dtype(working[c])
+    ]
+    meta["rows_after_features"] = len(working)
+
+    meta["label_error"] = None
+    meta["label_collisions"] = []
+    generated_label_cols: set[str] = set()
+    label_cfg = state.get("label") if include_label else None
+    if label_cfg and label_cfg.get("method"):
+        generated_label_cols = set(predicted_label_columns(label_cfg))
+        # A generated label would overwrite a same-named user column; the labeler
+        # preserves theirs as "<name>_source". Report which so the UI can say so.
+        meta["label_collisions"] = [
+            c for c in predicted_label_columns(label_cfg) if c in working.columns
+        ]
+        ctx = price_context or {}
+        if ohlcv_map:
+            ctx = {**ctx, "ohlcv_map": ohlcv_map}
+        labeled, err = apply_label(working, label_cfg, ctx)
+        if err:
+            if not soft_label:
                 return None, None, err
+            meta["label_error"] = err
+        else:
+            working = labeled
+
+    # Retire the unticked/superseded columns now that features and labels have
+    # had their chance to read them. Generated label columns are never dropped:
+    # a user column named "label" that was unticked has already been renamed to
+    # "label_source" by the labeler, so dropping "label" here would delete the
+    # target we just created.
+    drops = [
+        c for c in working.columns
+        if c in deferred_drops and c not in generated_label_cols
+    ]
+    if drops:
+        working = working.drop(columns=drops)
+    meta["columns_dropped"] = drops
 
     if include_split:
         split_cfg = state.get("split") or {"method": "temporal", "params": {"train_ratio": 0.8}}

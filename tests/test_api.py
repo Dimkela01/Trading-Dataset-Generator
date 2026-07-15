@@ -33,12 +33,48 @@ def test_preview_rejects_bad_feature(uploaded_session, api_client):
     sid = uploaded_session["session_id"]
     state = {
         "session_id": sid,
+        "column_transforms": [],
+        "features": [{"type": "ratio", "params": {"col_a": "close", "col_b": "not_a_column"}}],
+    }
+    r = api_client.post("/preview", json=state)
+    assert r.status_code == 400
+    assert "not_a_column" in r.json()["detail"]
+
+
+def test_preview_offers_pre_drop_columns_to_feature_pickers(uploaded_session, api_client):
+    """A dropped column stays selectable as a feature input, but leaves the export.
+
+    This is the contract Step 2's column pickers rely on: they render
+    `available_columns`, not `columns`.
+    """
+    sid = uploaded_session["session_id"]
+    state = {
+        "session_id": sid,
         "column_transforms": [{"column": "volume", "transform": "drop", "params": {}}],
         "features": [{"type": "vwap", "params": {}}],
     }
     r = api_client.post("/preview", json=state)
-    assert r.status_code == 400
-    assert "volume" in r.json()["detail"].lower()
+    assert r.status_code == 200
+    body = r.json()
+    assert "vwap" in body["columns"]  # VWAP computed from volume...
+    assert "volume" not in body["columns"]  # ...which is gone from the export
+    assert "volume" in body["available_columns"]  # ...but still pickable
+    assert body["columns_dropped"] == ["volume"]
+
+
+def test_preview_surfaces_label_error_without_losing_features(uploaded_session, api_client):
+    sid = uploaded_session["session_id"]
+    state = {
+        "session_id": sid,
+        "column_transforms": [],
+        "features": [{"type": "rsi", "params": {"period": 14}}],
+        "label": {"method": "custom", "params": {"expression": "close.to_csv('x')"}},
+    }
+    r = api_client.post("/preview", json=state)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["label_error"]
+    assert "rsi_14" in body["columns"]  # the feature preview survives
 
 
 def test_export_zip_contents(uploaded_session, api_client):
