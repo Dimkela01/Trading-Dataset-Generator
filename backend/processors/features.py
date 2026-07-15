@@ -31,8 +31,13 @@ def _resolve_price(df: pd.DataFrame, ohlcv_map: dict) -> tuple[pd.Series | None,
       4. the mid price derived on the fly from bid + ask
       5. a single bid price as a last resort
     """
-    # 1. explicit close mapping
-    if "close" in ohlcv_map and ohlcv_map["close"] in df.columns:
+    # 1. explicit close mapping — but only if it actually looks like a price
+    #    (a mis-detected close like bid_levels_count must not poison indicators).
+    if (
+        "close" in ohlcv_map
+        and ohlcv_map["close"] in df.columns
+        and _is_price_col(df, ohlcv_map["close"])
+    ):
         c = ohlcv_map["close"]
         return df[c], str(c)
     # 2. existing mid column
@@ -175,16 +180,19 @@ def apply_features(
                 price, src = _resolve_price(result, ohlcv_map)
                 if price is None:
                     return None, "VWAP requires a close/price column", added_features
-                if high_col and low_col and high_col in result.columns and low_col in result.columns:
-                    result["vwap"] = ta.vwap(
-                        result[high_col], result[low_col], price, result[vol_col]
-                    )
-                    src = f"high={high_col}, low={low_col}, close={src}, volume={vol_col}"
-                else:
-                    result["vwap"] = ta.vwap(price, price, price, result[vol_col])
-                    src = f"price={src}, volume={vol_col}"
+                # Cumulative (anchored) VWAP = Σ(price·volume) / Σ(volume).
+                # Computed directly so it works on any index — pandas_ta.vwap
+                # silently returns nothing unless the frame has a DatetimeIndex.
+                vol = result[vol_col]
+                cum_vol = vol.cumsum().replace(0, float("nan"))
+                result["vwap"] = (price * vol).cumsum() / cum_vol
                 added_features.append(
-                    {"type": "vwap", "params": params, "columns": ["vwap"], "source": src}
+                    {
+                        "type": "vwap",
+                        "params": params,
+                        "columns": ["vwap"],
+                        "source": f"anchored VWAP: price={src}, volume={vol_col}",
+                    }
                 )
 
             elif ftype == "lag":

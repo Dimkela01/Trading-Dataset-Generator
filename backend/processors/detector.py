@@ -41,7 +41,13 @@ def _normalize_name(name: str) -> str:
 def _fuzzy_match(name: str, targets: tuple[str, ...]) -> bool:
     norm = _normalize_name(name)
     for t in targets:
-        if t in norm or norm in t:
+        if len(t) <= 1:
+            # Single-letter aliases (o/h/l/c/v) must match the *whole* name, not
+            # a substring — otherwise "c" grabs bid_levels_count, "v" grabs any
+            # column with a v, and a book-only file mis-reports full OHLCV.
+            if norm == t:
+                return True
+        elif t in norm or norm in t:
             return True
     return False
 
